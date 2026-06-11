@@ -1,0 +1,1 @@
+# bitovi-github-actions-deploy-static-site-to-aws

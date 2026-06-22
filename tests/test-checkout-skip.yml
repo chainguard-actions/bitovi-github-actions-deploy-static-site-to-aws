@@ -1,0 +1,75 @@
+name: Test checkout skip behavior
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REPOSITORY: myorg/myrepo
+      GITHUB_REF_NAME: main
+      GITHUB_HEAD_REF: ""
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Invoke action with checkout disabled (will fail at Terraform without real AWS creds)
+        id: action
+        uses: .
+        continue-on-error: true
+        with:
+          checkout: 'false'
+          aws_access_key_id: fake-key-id
+          aws_secret_access_key: fake-secret-key
+          aws_default_region: us-east-1
+          aws_site_source_folder: .
+
+      - name: Assert action.yml has conditional checkout step
+        run: |
+          # Verify the action.yml contains the checkout conditional
+          if ! grep -q "inputs.checkout == 'true'" "$GITHUB_WORKSPACE/action.yaml"; then
+            echo "FAIL: action.yaml does not contain checkout conditional"
+            exit 1
+          fi
+          echo "PASS: action.yaml has checkout conditional"
+
+      - name: Assert action.yml checkout step uses correct condition
+        run: |
+          # Verify the checkout step has the if condition
+          if ! grep -A2 "name: Checkout" "$GITHUB_WORKSPACE/action.yaml" | grep -q "if:"; then
+            echo "FAIL: Checkout step does not have an if condition"
+            exit 1
+          fi
+          echo "PASS: Checkout step has if condition"
+
+      - name: Assert checkout input has correct default value
+        run: |
+          # Verify the checkout input defaults to 'true'
+          if ! grep -A3 "checkout:" "$GITHUB_WORKSPACE/action.yaml" | grep -q "default: 'true'"; then
+            echo "FAIL: checkout input does not default to 'true'"
+            exit 1
+          fi
+          echo "PASS: checkout input defaults to 'true'"
+
+      - name: Assert generate_identifier.sh exists and is executable
+        run: |
+          if [ ! -x "$GITHUB_WORKSPACE/scripts/generate_identifier.sh" ]; then
+            echo "FAIL: generate_identifier.sh is not executable"
+            exit 1
+          fi
+          echo "PASS: generate_identifier.sh exists and is executable"
+
+      - name: Assert generate_provider.sh exists and is executable
+        run: |
+          if [ ! -x "$GITHUB_WORKSPACE/scripts/generate_provider.sh" ]; then
+            echo "FAIL: generate_provider.sh is not executable"
+            exit 1
+          fi
+          echo "PASS: generate_provider.sh exists and is executable"
+
+      - name: Assert check_bucket_name.sh exists and is executable
+        run: |
+          if [ ! -x "$GITHUB_WORKSPACE/scripts/check_bucket_name.sh" ]; then
+            echo "FAIL: check_bucket_name.sh is not executable"
+            exit 1
+          fi
+          echo "PASS: check_bucket_name.sh exists and is executable"

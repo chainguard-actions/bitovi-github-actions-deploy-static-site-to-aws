@@ -1,0 +1,86 @@
+name: Test provider.tf generation script
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REPOSITORY: myorg/myrepo
+      GITHUB_REF_NAME: main
+      GITHUB_HEAD_REF: ""
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Invoke action (will fail at Terraform without real AWS creds)
+        id: action
+        uses: .
+        continue-on-error: true
+        with:
+          checkout: 'false'
+          aws_access_key_id: fake-key-id
+          aws_secret_access_key: fake-secret-key
+          aws_default_region: us-east-1
+          aws_site_source_folder: .
+          tf_state_bucket: myorg-myrepo-main-tf-state
+
+      - name: Run generate_provider.sh
+        id: generate_provider
+        env:
+          GITHUB_ACTION_PATH: "${{ github.workspace }}"
+          AWS_DEFAULT_REGION: us-east-1
+          TF_STATE_BUCKET: myorg-myrepo-main-tf-state
+          TF_STATE_FILE_NAME: ""
+          TF_STATE_FILE_NAME_APPEND: ""
+        run: |
+          bash "$GITHUB_WORKSPACE/scripts/generate_provider.sh"
+
+      - name: Assert provider.tf was created
+        run: |
+          if [ ! -f "$GITHUB_WORKSPACE/terraform_code/provider.tf" ]; then
+            echo "FAIL: provider.tf was not created"
+            exit 1
+          fi
+          echo "PASS: provider.tf exists"
+
+      - name: Assert provider.tf contains correct region
+        run: |
+          echo "Contents of provider.tf:"
+          cat "$GITHUB_WORKSPACE/terraform_code/provider.tf"
+          if ! grep -q 'region.*=.*"us-east-1"' "$GITHUB_WORKSPACE/terraform_code/provider.tf"; then
+            echo "FAIL: provider.tf does not contain expected region"
+            exit 1
+          fi
+          echo "PASS: region is correct"
+
+      - name: Assert provider.tf contains correct bucket
+        run: |
+          if ! grep -q 'bucket.*=.*"myorg-myrepo-main-tf-state"' "$GITHUB_WORKSPACE/terraform_code/provider.tf"; then
+            echo "FAIL: provider.tf does not contain expected bucket name"
+            exit 1
+          fi
+          echo "PASS: bucket name is correct"
+
+      - name: Assert provider.tf contains S3 backend
+        run: |
+          if ! grep -q 'backend "s3"' "$GITHUB_WORKSPACE/terraform_code/provider.tf"; then
+            echo "FAIL: provider.tf does not contain S3 backend"
+            exit 1
+          fi
+          echo "PASS: S3 backend is present"
+
+      - name: Assert provider.tf contains AWS provider
+        run: |
+          if ! grep -q 'provider "aws"' "$GITHUB_WORKSPACE/terraform_code/provider.tf"; then
+            echo "FAIL: provider.tf does not contain AWS provider"
+            exit 1
+          fi
+          echo "PASS: AWS provider is present"
+
+      - name: Assert provider.tf contains default state file name
+        run: |
+          if ! grep -q 'key.*=.*"tf-state-site"' "$GITHUB_WORKSPACE/terraform_code/provider.tf"; then
+            echo "FAIL: provider.tf does not contain expected state file key"
+            exit 1
+          fi
+          echo "PASS: state file key is correct"

@@ -1,0 +1,71 @@
+name: Test provider.tf generation with custom state file name
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REPOSITORY: myorg/myrepo
+      GITHUB_REF_NAME: main
+      GITHUB_HEAD_REF: ""
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Invoke action (will fail at Terraform without real AWS creds)
+        id: action
+        uses: .
+        continue-on-error: true
+        with:
+          checkout: 'false'
+          aws_access_key_id: fake-key-id
+          aws_secret_access_key: fake-secret-key
+          aws_default_region: us-west-2
+          aws_site_source_folder: .
+          tf_state_bucket: my-custom-tf-bucket
+          tf_state_file_name: my-custom-state
+          tf_state_file_name_append: unique
+
+      - name: Run generate_provider.sh with custom state file name
+        env:
+          GITHUB_ACTION_PATH: "${{ github.workspace }}"
+          AWS_DEFAULT_REGION: us-west-2
+          TF_STATE_BUCKET: my-custom-tf-bucket
+          TF_STATE_FILE_NAME: my-custom-state
+          TF_STATE_FILE_NAME_APPEND: unique
+        run: |
+          bash "$GITHUB_WORKSPACE/scripts/generate_provider.sh"
+
+      - name: Assert provider.tf was created
+        run: |
+          if [ ! -f "$GITHUB_WORKSPACE/terraform_code/provider.tf" ]; then
+            echo "FAIL: provider.tf was not created"
+            exit 1
+          fi
+          echo "PASS: provider.tf exists"
+          cat "$GITHUB_WORKSPACE/terraform_code/provider.tf"
+
+      - name: Assert provider.tf contains custom state file name with append
+        run: |
+          if ! grep -q 'key.*=.*"my-custom-state-unique"' "$GITHUB_WORKSPACE/terraform_code/provider.tf"; then
+            echo "FAIL: provider.tf does not contain expected state file key 'my-custom-state-unique'"
+            cat "$GITHUB_WORKSPACE/terraform_code/provider.tf"
+            exit 1
+          fi
+          echo "PASS: custom state file key with append is correct"
+
+      - name: Assert provider.tf contains custom region
+        run: |
+          if ! grep -q 'region.*=.*"us-west-2"' "$GITHUB_WORKSPACE/terraform_code/provider.tf"; then
+            echo "FAIL: provider.tf does not contain expected region 'us-west-2'"
+            exit 1
+          fi
+          echo "PASS: custom region is correct"
+
+      - name: Assert provider.tf contains custom bucket
+        run: |
+          if ! grep -q 'bucket.*=.*"my-custom-tf-bucket"' "$GITHUB_WORKSPACE/terraform_code/provider.tf"; then
+            echo "FAIL: provider.tf does not contain expected bucket 'my-custom-tf-bucket'"
+            exit 1
+          fi
+          echo "PASS: custom bucket name is correct"

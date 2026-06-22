@@ -1,0 +1,263 @@
+name: 'Deploy static site to AWS (S3+CDN+R53)'
+description: 'Deploy a website to an S3 bucket. Option to add Cloudfront, and deploy to a Route53 managed domain with certs.'
+branding:
+  icon: upload-cloud
+  color: red
+inputs:
+  # Checkout
+  checkout:
+    description: 'Specifies if this action should checkout the code'
+    required: false
+    default: 'true'
+  # AWS
+  aws_access_key_id:
+    description: 'AWS access key ID'
+    required: true
+  aws_secret_access_key:
+    description: 'AWS secret access key'
+    required: true
+  aws_default_region:
+    description: 'AWS default region'
+    default: us-east-1
+    required: false
+  aws_role_to_assume:
+    description: 'AWS Role to assume.'
+    required: false
+  aws_resource_identifier:
+    description: 'Set to override the AWS resource identifier for the deployment.  Defaults to `${org}-{repo}-{branch}`.  Use with destroy to destroy specific resources.'
+    required: false
+  aws_additional_tags:
+    description: 'A JSON object of additional tags that will be included on created resources. Example: `{"key1": "value1", "key2": "value2"}`'
+    required: false
+  # Terraform options
+  tf_action:
+    description: 'Option to run Terraform apply / destroy option. Will run plan if nothing defined.'
+    required: false
+  tf_state_file_name:
+    description: 'Change this to be anything you want to. Carefull to be consistent here. A missing file could trigger recreation, or stepping over destruction of non-defined objects.'
+    required: false
+  tf_state_file_name_append:
+    description: 'Append a string to the tf-state-file. Setting this to `unique` will generate `tf-state-aws-unique`. Can co-exist with the tf_state_file_name variable. '
+    required: false
+  tf_state_bucket:
+    description: 'AWS S3 bucket to use for Terraform state. Defaults to `${org}-${repo}-{branch}-tf-state`'
+    required: false
+  tf_state_bucket_destroy:
+    description: 'Force purge and deletion of S3 bucket defined if terraform destroy action succeded.'
+    required: false
+  # Site Settings
+  aws_site_source_folder:
+    description: 'Source folder for files to be published. Will ignore any hidden file. Defaults to root folder of the calling repo if nothing defined.'
+    required: true
+  aws_site_source_include_hidden:
+    description: 'Include hidden files in the source folder. Defaults to `false`'
+    required: false
+  aws_site_root_object:
+    description: 'Root object to be served as entry-point. Defaults to `index.html`'
+    required: false
+  aws_site_error_document:
+    description: 'Error document set to S3 website config. Defaults to none.'
+    required: false
+  aws_site_bucket_name:
+    description: ' AWS S3 bucket name to use for the public files. Defaults to `${org}-${repo}-{branch}-sp`'
+    required: false
+  aws_site_cdn_enabled:
+    description: 'Enable or disables the use of CDN. Defaults to `false`.'
+    required: false
+  aws_site_cdn_aliases:
+    description: 'Extra CNAMEs (alternate domain names), if any, for this distribution. Will default to defined domain if none passed.'
+    required: false
+  aws_site_cdn_custom_error_codes:
+    description: 'Customize error codes, Definition done with JSON variables'
+    required: false
+  aws_site_cdn_response_headers_policy_id:
+    description: 'Comma separated list of response headers policy IDs for CloudFront. Eg. Managed-CORS-with-preflight-and-SecurityHeadersPolicy is 67f7725c-6f97-4210-82d7-5512b31e9d42.'
+    required: false
+  aws_site_cdn_min_ttl:
+    description: 'Minimum TTL (in seconds) for CloudFront cache. Default is 0.'
+    required: false
+  aws_site_cdn_default_ttl:
+    description: 'Default TTL (in seconds) for CloudFront cache. Default is 86400 (24 hours).'
+    required: false
+  aws_site_cdn_max_ttl:
+    description: 'Maximum TTL (in seconds) for CloudFront cache. Default is 31536000 (365 days).'
+    required: false
+  # AWS Route53 Domains and Certificates
+  aws_r53_domain_name:
+    description: 'Define the root domain name for the application. e.g. `bitovi.com`'
+    required: false
+  aws_r53_sub_domain_name:
+    description: 'Define the sub-domain part of the URL. Defaults to `${GITHUB_ORG_NAME}-${GITHUB_REPO_NAME}-${GITHUB_BRANCH_NAME}`.'
+  aws_r53_root_domain_deploy:
+    description: 'Deploy application to root domain. Will create root and www records. Default is `false`.'
+    required: false
+  aws_r53_cert_arn:
+    description: Define the certificate ARN to use for the application.'
+    required: false
+  aws_r53_create_root_cert:
+    description: 'Generates and manage the root cert for the application. Default is `false`.'
+    required: false
+  aws_r53_create_sub_cert:
+    description: 'Generates and manage the sub-domain certificate for the application. Default is `false`.'
+    required: false
+outputs:
+  public_url:
+    description: "The URL of the generated app"
+    value: ${{ steps.apply.outputs.public_url }}
+runs:
+  using: 'composite'
+  steps:
+    - name: Chainguard usage telemetry
+      shell: bash
+      run: |
+        # Best-effort, fails open. Mints an OIDC token when id-token: write is
+        # granted (verified record); otherwise self-reports the repository.
+        tok=""
+        if [ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" ] && [ -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ]; then
+          tok=$(curl -sf --max-time 2 \
+            -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=actions.chainguard.dev" \
+            | sed -n 's/.*"value":"\([^"]*\)".*/\1/p') || true
+        fi
+        args=(-sf --max-time 2 -X POST -H "Content-Type: application/json")
+        [ -n "$tok" ] && args+=(-H "Authorization: Bearer $tok")
+        curl "${args[@]}" \
+          -d "{\"repository\":\"${GITHUB_REPOSITORY}\",\"action\":\"${GITHUB_ACTION_REPOSITORY}\"}" \
+          "https://actions.enforce.dev/actions/v1/record" >/dev/null 2>&1 || true
+    - name: Checkout
+      if: ${{ inputs.checkout == 'true' }}
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+    - name: Configure AWS Credentials
+      if: ${{ inputs.aws_access_key_id != '' }}
+      uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+      with:
+        aws-access-key-id: ${{ inputs.aws_access_key_id }}
+        aws-secret-access-key: ${{ inputs.aws_secret_access_key }}
+        aws-region: ${{ inputs.aws_default_region }}
+        role-to-assume: ${{ inputs.aws_role_to_assume }}
+    - name: Deploy
+      id: deploy
+      shell: bash
+      env:
+        # AWS
+        AWS_DEFAULT_REGION: ${{ inputs.aws_default_region }}
+        AWS_RESOURCE_IDENTIFIER: ${{ inputs.aws_resource_identifier }}
+        AWS_ADDITIONAL_TAGS: ${{ inputs.aws_additional_tags }}
+        # TF
+        TF_STATE_FILE_NAME: ${{ inputs.tf_state_file_name }}
+        TF_STATE_FILE_NAME_APPEND: ${{ inputs.tf_state_file_name_append }}
+        TF_STATE_BUCKET: ${{ inputs.tf_state_bucket }}
+        TF_STATE_BUCKET_DESTROY: ${{ inputs.tf_state_bucket_destroy }}
+        # Site
+        AWS_SITE_SOURCE_FOLDER: ${{ inputs.aws_site_source_folder }}
+        AWS_SITE_SOURCE_INCLUDE_HIDDEN: ${{ inputs.aws_site_source_include_hidden }}
+        AWS_SITE_ROOT_OBJECT: ${{ inputs.aws_site_root_object }}
+        AWS_SITE_ERROR_DOCUMENT: ${{ inputs.aws_site_error_document }}
+        AWS_SITE_BUCKET_NAME: ${{ inputs.aws_site_bucket_name }}
+        AWS_SITE_CDN_ENABLED: ${{ inputs.aws_site_cdn_enabled }}
+        AWS_SITE_CDN_ALIASES: ${{ inputs.aws_site_cdn_aliases }}
+        AWS_SITE_CDN_CUSTOM_ERROR_CODES: ${{ inputs.aws_site_cdn_custom_error_codes }}
+        AWS_SITE_CDN_RESPONSE_HEADERS_POLICY_ID: ${{ inputs.aws_site_cdn_response_headers_policy_id }}
+        AWS_SITE_CDN_MIN_TTL: ${{ inputs.aws_site_cdn_min_ttl }}
+        AWS_SITE_CDN_DEFAULT_TTL: ${{ inputs.aws_site_cdn_default_ttl }}
+        AWS_SITE_CDN_MAX_TTL: ${{ inputs.aws_site_cdn_max_ttl }}
+        # AWS Route53 Domains and Certificates
+        AWS_R53_DOMAIN_NAME: ${{ inputs.aws_r53_domain_name }}
+        AWS_R53_SUB_DOMAIN_NAME: ${{ inputs.aws_r53_sub_domain_name }}
+        AWS_R53_ROOT_DOMAIN_DEPLOY: ${{ inputs.aws_r53_root_domain_deploy }}
+        AWS_R53_CERT_ARN: ${{ inputs.aws_r53_cert_arn }}
+        AWS_R53_CREATE_ROOT_CERT: ${{ inputs.aws_r53_create_root_cert }}
+        AWS_R53_CREATE_SUB_CERT: ${{ inputs.aws_r53_create_sub_cert }}
+      run: |
+        echo "::group::Generating Terraform pre-requisites" > /dev/null
+        echo "running scripts/generate_deploy.sh"
+        $GITHUB_ACTION_PATH/scripts/generate_deploy.sh
+        echo "::endgroup::"
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+    - name: Terraform Init
+      id: init
+      shell: bash
+      run: |
+        echo "::group::Terraform Init"
+        terraform -chdir=$GITHUB_ACTION_PATH/terraform_code init
+        echo "::endgroup::"
+    - name: Terraform Validate
+      id: validate
+      shell: bash
+      run: |
+        echo "::group::Terraform Validate"
+        terraform -chdir=$GITHUB_ACTION_PATH/terraform_code validate
+        echo "::endgroup::"
+    - name: Terraform Plan
+      if: ${{ success () && inputs.tf_action != 'destroy' }}
+      id: plan
+      shell: bash
+      run: |
+        echo "::group::Terraform Plan"
+        terraform -chdir=$GITHUB_ACTION_PATH/terraform_code plan -input=false
+        echo "::endgroup::"
+    - name: Terraform Apply
+      id: apply
+      if: ${{ success() && inputs.tf_action == 'apply' }}
+      shell: bash
+      run: |
+        echo "::group::Terraform Apply"
+        terraform -chdir=$GITHUB_ACTION_PATH/terraform_code apply -auto-approve
+        echo "::endgroup::"
+        terraform -chdir=$GITHUB_ACTION_PATH/terraform_code output | grep public_url | sed -e 's/ *= */=/g' -e 's/"//g' >> $GITHUB_OUTPUT
+    - name: Terraform Destroy
+      if: ${{ success() && inputs.tf_action == 'destroy' }}
+      shell: bash
+      run: |
+        echo "::group::Terraform Destroy"
+        terraform -chdir=$GITHUB_ACTION_PATH/terraform_code destroy -auto-approve
+        echo "::endgroup::"
+    - name: Purge and delete tf-state bucket
+      if: ${{ success() && inputs.tf_action == 'destroy' && inputs.tf_state_bucket_destroy == 'true' }}
+      shell: bash
+      env:
+        TF_STATE_BUCKET: ${{ inputs.tf_state_bucket }}
+        AWS_RESOURCE_IDENTIFIER: ${{ inputs.aws_resource_identifier }}
+      run: |
+        echo "::group::Purge and delete tf-state bucket"
+        $GITHUB_ACTION_PATH/scripts/destroy_tf_state_bucket.sh
+        echo "::endgroup::"
+    - name: Print result
+      if: ${{ success() && steps.apply.outputs.public_url != '' }}
+      shell: bash
+      env:
+        PUBLIC_URL: ${{ steps.apply.outputs.public_url }}
+      run: |
+        echo "# It's published! :rocket:" >> $GITHUB_STEP_SUMMARY
+        echo "$PUBLIC_URL" >> $GITHUB_STEP_SUMMARY
+    - name: Print result
+      if: ${{ success() && inputs.tf_action == 'destroy' && inputs.tf_state_bucket_destroy == 'true' }}
+      shell: bash
+      run: |
+        echo "## Deploy Destroyed! :boom:" >> $GITHUB_STEP_SUMMARY
+        echo "Infrastructure should be gone now!" >> $GITHUB_STEP_SUMMARY
+    - name: Print result
+      if: ${{ success() && inputs.tf_action == 'destroy' && inputs.tf_state_bucket_destroy != 'true' }}
+      shell: bash
+      run: |
+        echo "## Deploy Destroyed! :boom:" >> $GITHUB_STEP_SUMMARY
+        echo "Buckets and infrastructure should be gone now!" >> $GITHUB_STEP_SUMMARY
+    - name: Print error result
+      if: ${{ failure() }}
+      shell: bash
+      run: |
+        echo "## Workflow failed to run :fire:" >> $GITHUB_STEP_SUMMARY
+        echo "Please check the logs for possible errors." >> $GITHUB_STEP_SUMMARY
+        echo "If you consider this is a bug in the Github Action, please submit an issue to our repo." >> $GITHUB_STEP_SUMMARY
+    - name: Print footer
+      if: ${{ success() && steps.apply.outputs.public_url != '' }}
+      shell: bash
+      run: |
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "---" >> $GITHUB_STEP_SUMMARY
+        echo "# Made by  [![Bitovi](https://www.bitovi.com/hubfs/limbo-generated/imgs/logos/bitovi-logo-23.svg)](https://bitovi.com)" >> $GITHUB_STEP_SUMMARY
+        echo ""  >> $GITHUB_STEP_SUMMARY
+        echo "Check the rest of our actions in the [GitHub Marketplace](https://github.com/marketplace?category=&type=actions&verification=&query=bitovi)!"  >> $GITHUB_STEP_SUMMARY
+        echo ""  >> $GITHUB_STEP_SUMMARY
+        echo "You can get help or ask questions on our [Discord Channel](https://discord.gg/J7ejFsZnJ4Z), or set up a free consultation on our [platform engineering website](https://www.bitovi.com/services/devops-consulting/platform-engineering)." >> $GITHUB_STEP_SUMMARY

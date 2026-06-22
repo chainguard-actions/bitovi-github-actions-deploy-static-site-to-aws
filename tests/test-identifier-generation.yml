@@ -1,0 +1,121 @@
+name: Test identifier generation script
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REPOSITORY: myorg/myrepo
+      GITHUB_REF_NAME: main
+      GITHUB_HEAD_REF: ""
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Invoke action (will fail at Terraform without real AWS creds)
+        id: action
+        uses: .
+        continue-on-error: true
+        with:
+          checkout: 'false'
+          aws_access_key_id: fake-key-id
+          aws_secret_access_key: fake-secret-key
+          aws_default_region: us-east-1
+          aws_site_source_folder: .
+
+      - name: Run generate_identifier.sh with default inputs
+        id: identifier
+        env:
+          GITHUB_REPOSITORY: myorg/myrepo
+          GITHUB_REF_NAME: main
+          GITHUB_HEAD_REF: ""
+          AWS_RESOURCE_IDENTIFIER: ""
+        run: |
+          RESULT=$(bash "$GITHUB_WORKSPACE/scripts/generate_identifier.sh")
+          echo "result=$RESULT" >> $GITHUB_OUTPUT
+          echo "Identifier: $RESULT"
+
+      - name: Assert identifier is generated correctly
+        env:
+          ACTUAL: ${{ steps.identifier.outputs.result }}
+        run: |
+          echo "actual: $ACTUAL"
+          EXPECTED="myorg-myrepo-main"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "FAIL: expected '$EXPECTED' but got '$ACTUAL'"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Run generate_identifier.sh with custom AWS_RESOURCE_IDENTIFIER
+        id: custom_identifier
+        env:
+          GITHUB_REPOSITORY: myorg/myrepo
+          GITHUB_REF_NAME: main
+          GITHUB_HEAD_REF: ""
+          AWS_RESOURCE_IDENTIFIER: my-custom-resource
+        run: |
+          RESULT=$(bash "$GITHUB_WORKSPACE/scripts/generate_identifier.sh")
+          echo "result=$RESULT" >> $GITHUB_OUTPUT
+          echo "Custom Identifier: $RESULT"
+
+      - name: Assert custom identifier is used
+        env:
+          ACTUAL: ${{ steps.custom_identifier.outputs.result }}
+        run: |
+          echo "actual: $ACTUAL"
+          EXPECTED="my-custom-resource"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "FAIL: expected '$EXPECTED' but got '$ACTUAL'"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Run generate_identifier.sh with short length argument
+        id: short_identifier
+        env:
+          GITHUB_REPOSITORY: myorg/myrepo
+          GITHUB_REF_NAME: main
+          GITHUB_HEAD_REF: ""
+          AWS_RESOURCE_IDENTIFIER: ""
+        run: |
+          RESULT=$(bash "$GITHUB_WORKSPACE/scripts/generate_identifier.sh" 30)
+          echo "result=$RESULT" >> $GITHUB_OUTPUT
+          echo "Short Identifier: $RESULT"
+
+      - name: Assert short identifier length is within limit
+        env:
+          ACTUAL: ${{ steps.short_identifier.outputs.result }}
+        run: |
+          echo "actual: $ACTUAL"
+          LENGTH=${#ACTUAL}
+          echo "length: $LENGTH"
+          if [ "$LENGTH" -gt 30 ]; then
+            echo "FAIL: identifier length $LENGTH exceeds 30 characters"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Run generate_identifier.sh with uppercase and underscores
+        id: normalized_identifier
+        env:
+          GITHUB_REPOSITORY: MyOrg/My_Repo
+          GITHUB_REF_NAME: Feature/Branch
+          GITHUB_HEAD_REF: ""
+          AWS_RESOURCE_IDENTIFIER: ""
+        run: |
+          RESULT=$(bash "$GITHUB_WORKSPACE/scripts/generate_identifier.sh")
+          echo "result=$RESULT" >> $GITHUB_OUTPUT
+          echo "Normalized Identifier: $RESULT"
+
+      - name: Assert identifier is lowercased and normalized
+        env:
+          ACTUAL: ${{ steps.normalized_identifier.outputs.result }}
+        run: |
+          echo "actual: $ACTUAL"
+          # Should be lowercase with dashes, no underscores or uppercase
+          if echo "$ACTUAL" | grep -q '[A-Z_]'; then
+            echo "FAIL: identifier contains uppercase or underscores: $ACTUAL"
+            exit 1
+          fi
+          echo "PASS"

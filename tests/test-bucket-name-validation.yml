@@ -1,0 +1,99 @@
+name: Test S3 bucket name validation script
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REPOSITORY: myorg/myrepo
+      GITHUB_REF_NAME: main
+      GITHUB_HEAD_REF: ""
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Invoke action (will fail at Terraform without real AWS creds)
+        id: action
+        uses: .
+        continue-on-error: true
+        with:
+          checkout: 'false'
+          aws_access_key_id: fake-key-id
+          aws_secret_access_key: fake-secret-key
+          aws_default_region: us-east-1
+          aws_site_source_folder: .
+
+      - name: Assert valid bucket name passes validation
+        run: |
+          bash "$GITHUB_WORKSPACE/scripts/check_bucket_name.sh" "myorg-myrepo-main-tf-state"
+          echo "PASS: valid bucket name accepted"
+
+      - name: Assert valid bucket name with numbers passes validation
+        run: |
+          bash "$GITHUB_WORKSPACE/scripts/check_bucket_name.sh" "my-bucket-123"
+          echo "PASS: valid bucket name with numbers accepted"
+
+      - name: Assert bucket name too short fails validation
+        run: |
+          if bash "$GITHUB_WORKSPACE/scripts/check_bucket_name.sh" "ab" 2>/dev/null; then
+            echo "FAIL: expected validation to fail for short bucket name"
+            exit 1
+          fi
+          echo "PASS: short bucket name correctly rejected"
+
+      - name: Assert bucket name too long fails validation
+        run: |
+          LONG_NAME="a$(printf 'b%.0s' {1..63})"
+          if bash "$GITHUB_WORKSPACE/scripts/check_bucket_name.sh" "$LONG_NAME" 2>/dev/null; then
+            echo "FAIL: expected validation to fail for long bucket name"
+            exit 1
+          fi
+          echo "PASS: long bucket name correctly rejected"
+
+      - name: Assert bucket name with uppercase fails validation
+        run: |
+          if bash "$GITHUB_WORKSPACE/scripts/check_bucket_name.sh" "MyBucket" 2>/dev/null; then
+            echo "FAIL: expected validation to fail for uppercase bucket name"
+            exit 1
+          fi
+          echo "PASS: uppercase bucket name correctly rejected"
+
+      - name: Assert bucket name formatted as IP address fails validation
+        run: |
+          if bash "$GITHUB_WORKSPACE/scripts/check_bucket_name.sh" "192.168.1.1" 2>/dev/null; then
+            echo "FAIL: expected validation to fail for IP address bucket name"
+            exit 1
+          fi
+          echo "PASS: IP address bucket name correctly rejected"
+
+      - name: Assert bucket name with xn-- prefix fails validation
+        run: |
+          if bash "$GITHUB_WORKSPACE/scripts/check_bucket_name.sh" "xn--mybucket" 2>/dev/null; then
+            echo "FAIL: expected validation to fail for xn-- prefix bucket name"
+            exit 1
+          fi
+          echo "PASS: xn-- prefix bucket name correctly rejected"
+
+      - name: Assert bucket name ending with -s3alias fails validation
+        run: |
+          if bash "$GITHUB_WORKSPACE/scripts/check_bucket_name.sh" "mybucket-s3alias" 2>/dev/null; then
+            echo "FAIL: expected validation to fail for -s3alias suffix bucket name"
+            exit 1
+          fi
+          echo "PASS: -s3alias suffix bucket name correctly rejected"
+
+      - name: Assert bucket name with adjacent periods fails validation
+        run: |
+          if bash "$GITHUB_WORKSPACE/scripts/check_bucket_name.sh" "my..bucket" 2>/dev/null; then
+            echo "FAIL: expected validation to fail for adjacent periods in bucket name"
+            exit 1
+          fi
+          echo "PASS: adjacent periods in bucket name correctly rejected"
+
+      - name: Assert bucket name starting with hyphen fails validation
+        run: |
+          if bash "$GITHUB_WORKSPACE/scripts/check_bucket_name.sh" "-mybucket" 2>/dev/null; then
+            echo "FAIL: expected validation to fail for bucket name starting with hyphen"
+            exit 1
+          fi
+          echo "PASS: bucket name starting with hyphen correctly rejected"

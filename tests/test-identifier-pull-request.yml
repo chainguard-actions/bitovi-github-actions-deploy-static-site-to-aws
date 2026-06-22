@@ -1,0 +1,88 @@
+name: Test identifier generation for pull request event
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REPOSITORY: myorg/myrepo
+      GITHUB_REF: refs/pull/42/merge
+      GITHUB_REF_NAME: "42/merge"
+      GITHUB_HEAD_REF: feature-branch
+      GITHUB_BASE_REF: main
+      GITHUB_EVENT_NAME: pull_request
+      AWS_RESOURCE_IDENTIFIER: ""
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Invoke action (will fail at Terraform without real AWS creds)
+        id: action
+        uses: .
+        continue-on-error: true
+        with:
+          checkout: 'false'
+          aws_access_key_id: fake-key-id
+          aws_secret_access_key: fake-secret-key
+          aws_default_region: us-east-1
+          aws_site_source_folder: .
+
+      - name: Run generate_identifier.sh for pull request context
+        id: pr_identifier
+        env:
+          GITHUB_REPOSITORY: myorg/myrepo
+          GITHUB_REF_NAME: "42/merge"
+          GITHUB_HEAD_REF: feature-branch
+          AWS_RESOURCE_IDENTIFIER: ""
+        run: |
+          RESULT=$(bash "$GITHUB_WORKSPACE/scripts/generate_identifier.sh")
+          echo "result=$RESULT" >> $GITHUB_OUTPUT
+          echo "PR Identifier: $RESULT"
+
+      - name: Assert identifier uses GITHUB_HEAD_REF for pull requests
+        env:
+          ACTUAL: ${{ steps.pr_identifier.outputs.result }}
+        run: |
+          echo "actual: $ACTUAL"
+          # For PRs, GITHUB_HEAD_REF should be used as the branch name
+          EXPECTED="myorg-myrepo-feature-branch"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "FAIL: expected '$EXPECTED' but got '$ACTUAL'"
+            exit 1
+          fi
+          echo "PASS: PR identifier uses GITHUB_HEAD_REF correctly"
+
+      - name: Run generate_identifier.sh with short length for PR
+        id: pr_short_identifier
+        env:
+          GITHUB_REPOSITORY: myorg/myrepo
+          GITHUB_REF_NAME: "42/merge"
+          GITHUB_HEAD_REF: feature-branch
+          AWS_RESOURCE_IDENTIFIER: ""
+        run: |
+          RESULT=$(bash "$GITHUB_WORKSPACE/scripts/generate_identifier.sh" 30)
+          echo "result=$RESULT" >> $GITHUB_OUTPUT
+          echo "PR Short Identifier: $RESULT"
+
+      - name: Assert short PR identifier is within length limit
+        env:
+          ACTUAL: ${{ steps.pr_short_identifier.outputs.result }}
+        run: |
+          echo "actual: $ACTUAL"
+          LENGTH=${#ACTUAL}
+          echo "length: $LENGTH"
+          if [ "$LENGTH" -gt 30 ]; then
+            echo "FAIL: short identifier length $LENGTH exceeds 30 characters"
+            exit 1
+          fi
+          echo "PASS: short PR identifier is within length limit"
+
+      - name: Assert identifier is lowercase
+        env:
+          ACTUAL: ${{ steps.pr_identifier.outputs.result }}
+        run: |
+          echo "actual: $ACTUAL"
+          if echo "$ACTUAL" | grep -q '[A-Z]'; then
+            echo "FAIL: identifier contains uppercase characters: $ACTUAL"
+            exit 1
+          fi
+          echo "PASS: identifier is lowercase"

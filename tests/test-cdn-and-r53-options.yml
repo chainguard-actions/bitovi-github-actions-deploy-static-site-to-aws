@@ -1,0 +1,141 @@
+name: Test CDN and Route53 options
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REPOSITORY: myorg/myrepo
+      GITHUB_REF_NAME: main
+      GITHUB_HEAD_REF: ""
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Invoke action with CDN and Route53 options
+        id: action
+        uses: .
+        continue-on-error: true
+        with:
+          checkout: 'false'
+          aws_access_key_id: fake-key-id
+          aws_secret_access_key: fake-secret-key
+          aws_default_region: us-east-1
+          aws_site_source_folder: .
+          aws_site_cdn_enabled: 'true'
+          aws_site_cdn_aliases: www.example.com,example.com
+          aws_site_cdn_custom_error_codes: '[{"error_code":404,"response_code":200,"response_page_path":"/index.html"}]'
+          aws_site_cdn_response_headers_policy_id: 67f7725c-6f97-4210-82d7-5512b31e9d42
+          aws_site_cdn_min_ttl: '0'
+          aws_site_cdn_default_ttl: '86400'
+          aws_site_cdn_max_ttl: '31536000'
+          aws_r53_domain_name: example.com
+          aws_r53_sub_domain_name: myapp
+          aws_r53_root_domain_deploy: 'false'
+          aws_r53_cert_arn: arn:aws:acm:us-east-1:123456789012:certificate/abc123
+          aws_r53_create_root_cert: 'false'
+          aws_r53_create_sub_cert: 'false'
+
+      - name: Assert action.yml contains aws_site_cdn_enabled input
+        run: |
+          if ! grep -q 'aws_site_cdn_enabled' "$GITHUB_WORKSPACE/action.yaml"; then
+            echo "FAIL: action.yaml does not contain aws_site_cdn_enabled input"
+            exit 1
+          fi
+          echo "PASS: aws_site_cdn_enabled input is defined"
+
+      - name: Assert action.yml contains aws_site_cdn_aliases input
+        run: |
+          if ! grep -q 'aws_site_cdn_aliases' "$GITHUB_WORKSPACE/action.yaml"; then
+            echo "FAIL: action.yaml does not contain aws_site_cdn_aliases input"
+            exit 1
+          fi
+          echo "PASS: aws_site_cdn_aliases input is defined"
+
+      - name: Assert action.yml contains aws_site_cdn_custom_error_codes input
+        run: |
+          if ! grep -q 'aws_site_cdn_custom_error_codes' "$GITHUB_WORKSPACE/action.yaml"; then
+            echo "FAIL: action.yaml does not contain aws_site_cdn_custom_error_codes input"
+            exit 1
+          fi
+          echo "PASS: aws_site_cdn_custom_error_codes input is defined"
+
+      - name: Assert action.yml contains aws_site_cdn_response_headers_policy_id input
+        run: |
+          if ! grep -q 'aws_site_cdn_response_headers_policy_id' "$GITHUB_WORKSPACE/action.yaml"; then
+            echo "FAIL: action.yaml does not contain aws_site_cdn_response_headers_policy_id input"
+            exit 1
+          fi
+          echo "PASS: aws_site_cdn_response_headers_policy_id input is defined"
+
+      - name: Assert action.yml contains aws_site_cdn_min_ttl input
+        run: |
+          if ! grep -q 'aws_site_cdn_min_ttl' "$GITHUB_WORKSPACE/action.yaml"; then
+            echo "FAIL: action.yaml does not contain aws_site_cdn_min_ttl input"
+            exit 1
+          fi
+          echo "PASS: aws_site_cdn_min_ttl input is defined"
+
+      - name: Assert action.yml contains aws_site_cdn_default_ttl input
+        run: |
+          if ! grep -q 'aws_site_cdn_default_ttl' "$GITHUB_WORKSPACE/action.yaml"; then
+            echo "FAIL: action.yaml does not contain aws_site_cdn_default_ttl input"
+            exit 1
+          fi
+          echo "PASS: aws_site_cdn_default_ttl input is defined"
+
+      - name: Assert action.yml contains aws_site_cdn_max_ttl input
+        run: |
+          if ! grep -q 'aws_site_cdn_max_ttl' "$GITHUB_WORKSPACE/action.yaml"; then
+            echo "FAIL: action.yaml does not contain aws_site_cdn_max_ttl input"
+            exit 1
+          fi
+          echo "PASS: aws_site_cdn_max_ttl input is defined"
+
+      - name: Assert action.yml contains aws_r53_domain_name input
+        run: |
+          if ! grep -q 'aws_r53_domain_name' "$GITHUB_WORKSPACE/action.yaml"; then
+            echo "FAIL: action.yaml does not contain aws_r53_domain_name input"
+            exit 1
+          fi
+          echo "PASS: aws_r53_domain_name input is defined"
+
+      - name: Assert action.yml contains aws_r53_sub_domain_name input
+        run: |
+          if ! grep -q 'aws_r53_sub_domain_name' "$GITHUB_WORKSPACE/action.yaml"; then
+            echo "FAIL: action.yaml does not contain aws_r53_sub_domain_name input"
+            exit 1
+          fi
+          echo "PASS: aws_r53_sub_domain_name input is defined"
+
+      - name: Assert action.yml contains aws_r53_root_domain_deploy input
+        run: |
+          if ! grep -q 'aws_r53_root_domain_deploy' "$GITHUB_WORKSPACE/action.yaml"; then
+            echo "FAIL: action.yaml does not contain aws_r53_root_domain_deploy input"
+            exit 1
+          fi
+          echo "PASS: aws_r53_root_domain_deploy input is defined"
+
+      - name: Assert action.yml contains aws_r53_cert_arn input
+        run: |
+          if ! grep -q 'aws_r53_cert_arn' "$GITHUB_WORKSPACE/action.yaml"; then
+            echo "FAIL: action.yaml does not contain aws_r53_cert_arn input"
+            exit 1
+          fi
+          echo "PASS: aws_r53_cert_arn input is defined"
+
+      - name: Assert action.yml contains aws_r53_create_root_cert input
+        run: |
+          if ! grep -q 'aws_r53_create_root_cert' "$GITHUB_WORKSPACE/action.yaml"; then
+            echo "FAIL: action.yaml does not contain aws_r53_create_root_cert input"
+            exit 1
+          fi
+          echo "PASS: aws_r53_create_root_cert input is defined"
+
+      - name: Assert action.yml contains aws_r53_create_sub_cert input
+        run: |
+          if ! grep -q 'aws_r53_create_sub_cert' "$GITHUB_WORKSPACE/action.yaml"; then
+            echo "FAIL: action.yaml does not contain aws_r53_create_sub_cert input"
+            exit 1
+          fi
+          echo "PASS: aws_r53_create_sub_cert input is defined"

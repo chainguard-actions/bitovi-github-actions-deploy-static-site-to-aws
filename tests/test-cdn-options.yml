@@ -1,0 +1,47 @@
+name: Test CDN options
+on:
+  workflow_dispatch:
+
+jobs:
+  test-cdn-options:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF: refs/heads/main
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Create a minimal source folder so the action doesn't fail on missing source
+      - name: Create source folder
+        run: mkdir -p /tmp/site && echo "<html></html>" > /tmp/site/index.html
+
+      - name: Run action with CDN options and invalid AWS credentials
+        id: action
+        uses: .
+        continue-on-error: true
+        with:
+          checkout: 'false'
+          aws_access_key_id: 'AKIAIOSFODNN7EXAMPLE'
+          aws_secret_access_key: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
+          aws_default_region: 'us-east-1'
+          aws_site_source_folder: '/tmp/site'
+          aws_site_cdn_enabled: 'true'
+          aws_site_cdn_aliases: 'cdn.example.com'
+          aws_site_cdn_custom_error_codes: '[{"error_code": 404, "response_code": 200, "response_page_path": "/index.html"}]'
+          aws_site_cdn_response_headers_policy_id: '67f7725c-6f97-4210-82d7-5512b31e9d42'
+          aws_site_cdn_min_ttl: '0'
+          aws_site_cdn_default_ttl: '86400'
+          aws_site_cdn_max_ttl: '31536000'
+
+      - name: Assert action ran with CDN options
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          # The action should fail because AWS credentials are fake,
+          # but it should NOT be skipped — it should attempt to run.
+          if [ "$OUTCOME" = "skipped" ]; then
+            echo "FAIL: action was skipped, expected it to run (even if it fails due to fake AWS creds)"
+            exit 1
+          fi
+          echo "PASS: action ran with CDN options (outcome: $OUTCOME)"

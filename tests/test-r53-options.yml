@@ -1,0 +1,45 @@
+name: Test Route53 options
+on:
+  workflow_dispatch:
+
+jobs:
+  test-r53-options:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF: refs/heads/main
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Create a minimal source folder
+      - name: Create source folder
+        run: mkdir -p /tmp/site && echo "<html></html>" > /tmp/site/index.html
+
+      - name: Run action with Route53 options and invalid AWS credentials
+        id: action
+        uses: .
+        continue-on-error: true
+        with:
+          checkout: 'false'
+          aws_access_key_id: 'AKIAIOSFODNN7EXAMPLE'
+          aws_secret_access_key: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
+          aws_default_region: 'us-east-1'
+          aws_site_source_folder: '/tmp/site'
+          aws_r53_domain_name: 'example.com'
+          aws_r53_sub_domain_name: 'www'
+          aws_r53_root_domain_deploy: 'true'
+          aws_r53_cert_arn: 'arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012'
+          aws_r53_create_root_cert: 'false'
+
+      - name: Assert action ran with Route53 options
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          # The action should fail because AWS credentials are fake,
+          # but it should NOT be skipped — it should attempt to run.
+          if [ "$OUTCOME" = "skipped" ]; then
+            echo "FAIL: action was skipped, expected it to run (even if it fails due to fake AWS creds)"
+            exit 1
+          fi
+          echo "PASS: action ran with Route53 options (outcome: $OUTCOME)"

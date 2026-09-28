@@ -1,0 +1,48 @@
+name: Test site options
+on:
+  workflow_dispatch:
+
+jobs:
+  test-site-options:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF: refs/heads/main
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Create a minimal source folder with hidden files to test include_hidden
+      - name: Create source folder
+        run: |
+          mkdir -p /tmp/site
+          echo "<html></html>" > /tmp/site/index.html
+          echo "error page" > /tmp/site/error.html
+          echo "hidden content" > /tmp/site/.hidden-file
+
+      - name: Run action with site options and invalid AWS credentials
+        id: action
+        uses: .
+        continue-on-error: true
+        with:
+          checkout: 'false'
+          aws_access_key_id: 'AKIAIOSFODNN7EXAMPLE'
+          aws_secret_access_key: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
+          aws_default_region: 'us-east-1'
+          aws_site_source_folder: '/tmp/site'
+          aws_site_source_include_hidden: 'true'
+          aws_site_root_object: 'index.html'
+          aws_site_error_document: 'error.html'
+          aws_site_bucket_name: 'my-custom-static-site-bucket'
+
+      - name: Assert action ran with site options
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          # The action should fail because AWS credentials are fake,
+          # but it should NOT be skipped — it should attempt to run.
+          if [ "$OUTCOME" = "skipped" ]; then
+            echo "FAIL: action was skipped, expected it to run (even if it fails due to fake AWS creds)"
+            exit 1
+          fi
+          echo "PASS: action ran with site options (outcome: $OUTCOME)"

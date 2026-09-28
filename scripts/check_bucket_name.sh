@@ -53,4 +53,4 @@ function checkBucket() {
   fi
 }
 
-checkBucket "$1"
+checkBucket $1

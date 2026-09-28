@@ -126,10 +126,10 @@ runs:
           "https://actions.enforce.dev/actions/v1/record" >/dev/null 2>&1 || true
     - name: Checkout
       if: ${{ inputs.checkout == 'true' }}
-      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      uses: chainguard-actions/actions-checkout@59b7218bfc2eaabc464f1254f6e1dac5bda91d94 # v4
     - name: Configure AWS Credentials
       if: ${{ inputs.aws_access_key_id != '' }}
-      uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+      uses: chainguard-actions/aws-actions-configure-aws-credentials@05c5161294fac31f72449e5671350b7bf823c91f # v4
       with:
         aws-access-key-id: ${{ inputs.aws_access_key_id }}
         aws-secret-access-key: ${{ inputs.aws_secret_access_key }}
@@ -174,7 +174,7 @@ runs:
         $GITHUB_ACTION_PATH/scripts/generate_deploy.sh
         echo "::endgroup::"
     - name: Setup Terraform
-      uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+      uses: chainguard-actions/hashicorp-setup-terraform@4308fe81059c21b22619f41b1f9f95f8da4232f5 # v3
     - name: Terraform Init
       id: init
       shell: bash
@@ -205,9 +205,7 @@ runs:
         echo "::group::Terraform Apply"
         terraform -chdir=$GITHUB_ACTION_PATH/terraform_code apply -auto-approve
         echo "::endgroup::"
-        raw_output=$(terraform -chdir=$GITHUB_ACTION_PATH/terraform_code output | grep public_url | sed -e 's/ *= */=/g' -e 's/"//g')
-        safe_output=$(printf '%s' "$raw_output" | tr -d '\n\r')
-        echo "$safe_output" >> "$GITHUB_OUTPUT"
+        terraform -chdir=$GITHUB_ACTION_PATH/terraform_code output | grep public_url | sed -e 's/ *= */=/g' -e 's/"//g' >> $GITHUB_OUTPUT
     - name: Terraform Destroy
       if: ${{ success() && inputs.tf_action == 'destroy' }}
       shell: bash

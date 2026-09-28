@@ -16,15 +16,15 @@ function alpha_only() {
 function generate_var () {
   if [[ -n "$2" ]];then
     if [[ $(alpha_only "$2") == "true" ]] || [[ $(alpha_only "$2") == "false" ]]; then
-      echo "$1 = $(alpha_only "$2")"
+      echo "$1 = $(alpha_only $2)"
     else
       echo "$1 = \"$2\""
     fi
   fi
 }
 
-GITHUB_ORG_NAME=$(echo "$GITHUB_REPOSITORY" | sed 's/\/.*//')
-GITHUB_REPO_NAME=$(echo "$GITHUB_REPOSITORY" | sed 's/^.*\///')
+GITHUB_ORG_NAME=$(echo $GITHUB_REPOSITORY | sed 's/\/.*//')
+GITHUB_REPO_NAME=$(echo $GITHUB_REPOSITORY | sed 's/^.*\///')
 
 if [ -n "$GITHUB_HEAD_REF" ]; then
   GITHUB_BRANCH_NAME=${GITHUB_HEAD_REF}
@@ -87,29 +87,29 @@ else
   fi
 fi
 
-aws_tf_state_bucket=$(generate_var aws_tf_state_bucket "$TF_STATE_BUCKET")
+aws_tf_state_bucket=$(generate_var aws_tf_state_bucket $TF_STATE_BUCKET)
 #-- AWS Specific --#
-aws_additional_tags=$(generate_var aws_additional_tags "$AWS_ADDITIONAL_TAGS")
-aws_default_region=$(generate_var aws_default_region "$AWS_DEFAULT_REGION")
-#aws_site_source_folder=$(generate_var aws_site_source_folder "$AWS_SITE_SOURCE_FOLDER")
+aws_additional_tags=$(generate_var aws_additional_tags $AWS_ADDITIONAL_TAGS)
+aws_default_region=$(generate_var aws_default_region $AWS_DEFAULT_REGION)
+#aws_site_source_folder=$(generate_var aws_site_source_folder $AWS_SITE_SOURCE_FOLDER)
 aws_site_source_folder="aws_site_source_folder = \"${SOURCE_FILES}\""
-aws_site_bucket_name=$(generate_var aws_site_bucket_name "$AWS_SITE_BUCKET_NAME")
-aws_site_cdn_enabled=$(generate_var aws_site_cdn_enabled "$AWS_SITE_CDN_ENABLED")
-aws_site_cdn_aliases=$(generate_var aws_site_cdn_aliases "$AWS_SITE_CDN_ALIASES")
-aws_site_cdn_custom_error_codes=$(generate_var aws_site_cdn_custom_error_codes "$AWS_SITE_CDN_CUSTOM_ERROR_CODES")
-aws_site_cdn_response_headers_policy_id=$(generate_var aws_site_cdn_response_headers_policy_id "$AWS_SITE_CDN_RESPONSE_HEADERS_POLICY_ID")
-aws_site_cdn_min_ttl=$(generate_var aws_site_cdn_min_ttl "$AWS_SITE_CDN_MIN_TTL")
-aws_site_cdn_default_ttl=$(generate_var aws_site_cdn_default_ttl "$AWS_SITE_CDN_DEFAULT_TTL")
-aws_site_cdn_max_ttl=$(generate_var aws_site_cdn_max_ttl "$AWS_SITE_CDN_MAX_TTL")
-aws_site_root_object=$(generate_var aws_site_root_object "$AWS_SITE_ROOT_OBJECT")
-aws_site_error_document=$(generate_var aws_site_error_document "$AWS_SITE_ERROR_DOCUMENT")
-aws_r53_domain_name=$(generate_var aws_r53_domain_name "$AWS_R53_DOMAIN_NAME")
-aws_r53_root_domain_deploy=$(generate_var aws_r53_root_domain_deploy "$AWS_R53_ROOT_DOMAIN_DEPLOY")
-#aws_r53_enable_cert=$(generate_var aws_r53_enable_cert "$AWS_R53_ENABLE_CERT")
-aws_r53_enable_cert=$(generate_var aws_r53_enable_cert "$AWS_SITE_CDN_ENABLED") # Intentional. Only true if CDN is enabled. 
-aws_r53_cert_arn=$(generate_var aws_r53_cert_arn "$AWS_R53_CERT_ARN")
-aws_r53_create_root_cert=$(generate_var aws_r53_create_root_cert "$AWS_R53_CREATE_ROOT_CERT")
-aws_r53_create_sub_cert=$(generate_var aws_r53_create_sub_cert "$AWS_R53_CREATE_SUB_CERT")
+aws_site_bucket_name=$(generate_var aws_site_bucket_name $AWS_SITE_BUCKET_NAME)
+aws_site_cdn_enabled=$(generate_var aws_site_cdn_enabled $AWS_SITE_CDN_ENABLED)
+aws_site_cdn_aliases=$(generate_var aws_site_cdn_aliases $AWS_SITE_CDN_ALIASES)
+aws_site_cdn_custom_error_codes=$(generate_var aws_site_cdn_custom_error_codes $AWS_SITE_CDN_CUSTOM_ERROR_CODES)
+aws_site_cdn_response_headers_policy_id=$(generate_var aws_site_cdn_response_headers_policy_id $AWS_SITE_CDN_RESPONSE_HEADERS_POLICY_ID)
+aws_site_cdn_min_ttl=$(generate_var aws_site_cdn_min_ttl $AWS_SITE_CDN_MIN_TTL)
+aws_site_cdn_default_ttl=$(generate_var aws_site_cdn_default_ttl $AWS_SITE_CDN_DEFAULT_TTL)
+aws_site_cdn_max_ttl=$(generate_var aws_site_cdn_max_ttl $AWS_SITE_CDN_MAX_TTL)
+aws_site_root_object=$(generate_var aws_site_root_object $AWS_SITE_ROOT_OBJECT)
+aws_site_error_document=$(generate_var aws_site_error_document $AWS_SITE_ERROR_DOCUMENT)
+aws_r53_domain_name=$(generate_var aws_r53_domain_name $AWS_R53_DOMAIN_NAME)
+aws_r53_root_domain_deploy=$(generate_var aws_r53_root_domain_deploy $AWS_R53_ROOT_DOMAIN_DEPLOY)
+#aws_r53_enable_cert=$(generate_var aws_r53_enable_cert $AWS_R53_ENABLE_CERT)
+aws_r53_enable_cert=$(generate_var aws_r53_enable_cert $AWS_SITE_CDN_ENABLED) # Intentional. Only true if CDN is enabled. 
+aws_r53_cert_arn=$(generate_var aws_r53_cert_arn $AWS_R53_CERT_ARN)
+aws_r53_create_root_cert=$(generate_var aws_r53_create_root_cert $AWS_R53_CREATE_ROOT_CERT)
+aws_r53_create_sub_cert=$(generate_var aws_r53_create_sub_cert $AWS_R53_CREATE_SUB_CERT)
 
 # -------------------------------------------------- #
 
@@ -143,7 +143,7 @@ $app_branch_name
 " > "${GITHUB_ACTION_PATH}/terraform_code/terraform.tfvars"
 
 echo "Creating TF-STATE bucket"
-/bin/bash "$GITHUB_ACTION_PATH/scripts/check_bucket_name.sh" "$TF_STATE_BUCKET"
+/bin/bash $GITHUB_ACTION_PATH/scripts/check_bucket_name.sh $TF_STATE_BUCKET
 /bin/bash $GITHUB_ACTION_PATH/scripts/create_tf_state_bucket.sh 
 
 echo "Creating provider.tf"

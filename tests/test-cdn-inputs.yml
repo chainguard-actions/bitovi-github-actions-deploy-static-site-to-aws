@@ -1,0 +1,130 @@
+name: Test CDN inputs
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REPOSITORY: myorg/myrepo
+      GITHUB_REF_NAME: main
+      GITHUB_HEAD_REF: ""
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Invoke action with CDN inputs (will fail at Terraform without real AWS creds)
+        id: action
+        uses: .
+        continue-on-error: true
+        with:
+          checkout: 'false'
+          aws_access_key_id: fake-key-id
+          aws_secret_access_key: fake-secret-key
+          aws_default_region: us-east-1
+          aws_site_source_folder: .
+          aws_site_cdn_enabled: 'true'
+          aws_site_cdn_aliases: cdn.example.com
+          aws_site_cdn_custom_error_codes: '{"404": {"response_code": 200, "response_page_path": "/index.html"}}'
+          aws_site_cdn_response_headers_policy_id: 67f7725c-6f97-4210-82d7-5512b31e9d42
+          aws_site_cdn_min_ttl: '0'
+          aws_site_cdn_default_ttl: '86400'
+          aws_site_cdn_max_ttl: '31536000'
+
+      - name: Run generate_deploy.sh with CDN inputs
+        id: generate_deploy
+        env:
+          GITHUB_ACTION_PATH: "${{ github.workspace }}"
+          GITHUB_REPOSITORY: myorg/myrepo
+          GITHUB_REF_NAME: main
+          GITHUB_HEAD_REF: ""
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_RESOURCE_IDENTIFIER: ""
+          AWS_ADDITIONAL_TAGS: ""
+          TF_STATE_BUCKET: myorg-myrepo-main-tf-state
+          TF_STATE_FILE_NAME: ""
+          TF_STATE_FILE_NAME_APPEND: ""
+          AWS_SITE_SOURCE_FOLDER: .
+          AWS_SITE_SOURCE_INCLUDE_HIDDEN: ""
+          AWS_SITE_ROOT_OBJECT: ""
+          AWS_SITE_ERROR_DOCUMENT: ""
+          AWS_SITE_BUCKET_NAME: ""
+          AWS_SITE_CDN_ENABLED: "true"
+          AWS_SITE_CDN_ALIASES: cdn.example.com
+          AWS_SITE_CDN_CUSTOM_ERROR_CODES: '{"404": {"response_code": 200}}'
+          AWS_SITE_CDN_RESPONSE_HEADERS_POLICY_ID: 67f7725c-6f97-4210-82d7-5512b31e9d42
+          AWS_SITE_CDN_MIN_TTL: "0"
+          AWS_SITE_CDN_DEFAULT_TTL: "86400"
+          AWS_SITE_CDN_MAX_TTL: "31536000"
+          AWS_R53_DOMAIN_NAME: ""
+          AWS_R53_SUB_DOMAIN_NAME: ""
+          AWS_R53_ROOT_DOMAIN_DEPLOY: ""
+          AWS_R53_CERT_ARN: ""
+          AWS_R53_CREATE_ROOT_CERT: ""
+          AWS_R53_CREATE_SUB_CERT: ""
+        run: |
+          bash "$GITHUB_WORKSPACE/scripts/generate_deploy.sh" || true
+
+      - name: Assert terraform.tfvars contains CDN enabled
+        run: |
+          TFVARS="$GITHUB_WORKSPACE/terraform_code/terraform.tfvars"
+          echo "Contents of terraform.tfvars:"
+          cat "$TFVARS"
+          if ! grep -q 'aws_site_cdn_enabled.*=.*true' "$TFVARS"; then
+            echo "FAIL: terraform.tfvars does not contain expected aws_site_cdn_enabled"
+            exit 1
+          fi
+          echo "PASS: aws_site_cdn_enabled is correct"
+
+      - name: Assert terraform.tfvars contains CDN aliases
+        run: |
+          TFVARS="$GITHUB_WORKSPACE/terraform_code/terraform.tfvars"
+          if ! grep -q 'aws_site_cdn_aliases.*=.*"cdn.example.com"' "$TFVARS"; then
+            echo "FAIL: terraform.tfvars does not contain expected aws_site_cdn_aliases"
+            exit 1
+          fi
+          echo "PASS: aws_site_cdn_aliases is correct"
+
+      - name: Assert terraform.tfvars contains CDN response headers policy ID
+        run: |
+          TFVARS="$GITHUB_WORKSPACE/terraform_code/terraform.tfvars"
+          if ! grep -q 'aws_site_cdn_response_headers_policy_id.*=.*"67f7725c' "$TFVARS"; then
+            echo "FAIL: terraform.tfvars does not contain expected aws_site_cdn_response_headers_policy_id"
+            exit 1
+          fi
+          echo "PASS: aws_site_cdn_response_headers_policy_id is correct"
+
+      - name: Assert terraform.tfvars contains CDN min TTL
+        run: |
+          TFVARS="$GITHUB_WORKSPACE/terraform_code/terraform.tfvars"
+          if ! grep -q 'aws_site_cdn_min_ttl.*=.*"0"' "$TFVARS"; then
+            echo "FAIL: terraform.tfvars does not contain expected aws_site_cdn_min_ttl"
+            exit 1
+          fi
+          echo "PASS: aws_site_cdn_min_ttl is correct"
+
+      - name: Assert terraform.tfvars contains CDN default TTL
+        run: |
+          TFVARS="$GITHUB_WORKSPACE/terraform_code/terraform.tfvars"
+          if ! grep -q 'aws_site_cdn_default_ttl.*=.*"86400"' "$TFVARS"; then
+            echo "FAIL: terraform.tfvars does not contain expected aws_site_cdn_default_ttl"
+            exit 1
+          fi
+          echo "PASS: aws_site_cdn_default_ttl is correct"
+
+      - name: Assert terraform.tfvars contains CDN max TTL
+        run: |
+          TFVARS="$GITHUB_WORKSPACE/terraform_code/terraform.tfvars"
+          if ! grep -q 'aws_site_cdn_max_ttl.*=.*"31536000"' "$TFVARS"; then
+            echo "FAIL: terraform.tfvars does not contain expected aws_site_cdn_max_ttl"
+            exit 1
+          fi
+          echo "PASS: aws_site_cdn_max_ttl is correct"
+
+      - name: Assert terraform.tfvars contains CDN custom error codes
+        run: |
+          TFVARS="$GITHUB_WORKSPACE/terraform_code/terraform.tfvars"
+          if ! grep -q 'aws_site_cdn_custom_error_codes' "$TFVARS"; then
+            echo "FAIL: terraform.tfvars does not contain expected aws_site_cdn_custom_error_codes"
+            exit 1
+          fi
+          echo "PASS: aws_site_cdn_custom_error_codes is present"

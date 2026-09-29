@@ -16,21 +16,21 @@ Action **bitovi--github-actions-deploy-static-site-to-aws/v0.2.9** was hardened 
 
 ### unpinned-uses (severity: high)
 
-Three `uses:` references in action.yaml are pinned to mutable version tags instead of immutable 40-character commit SHAs. This exposes the action to supply-chain attacks if the upstream tag is moved or the repository is compromised. Failing references: `actions/checkout@v4`, `aws-actions/configure-aws-credentials@v4`, `hashicorp/setup-terraform@v3`.
+Three `uses:` references in action.yaml are pinned to mutable version tags instead of immutable 40-character commit SHAs. This exposes the action to supply-chain attacks if the upstream tag is moved or the repository is compromised. Failing references: `actions/checkout@v4`, `aws-actions/configure-aws-credentials@v4`, `hashicorp/setup-terraform@v3`. Each should be replaced with a full SHA pin, e.g. `actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4`.
 
 Locations:
 
 - `action.yaml:130`
-- `action.yaml:135`
-- `action.yaml:193`
+- `action.yaml:134`
+- `action.yaml:175`
 
 ### script-injection (severity: high)
 
-Sub-rule (a): A `${{ ... }}` expression is interpolated directly inside a `run:` shell command string. In the "Print result" step, the line `echo ${{ steps.apply.outputs.public_url }} >> $GITHUB_STEP_SUMMARY` injects the `steps.apply.outputs.public_url` value through YAML template substitution before the shell ever sees it. If the Terraform output contains shell metacharacters, this can lead to command injection. The value should be passed via an `env:` variable and then referenced as a quoted `"$VAR"` in the shell script.
+Sub-rule (a): A `${{ }}` expression is interpolated directly inside a `run:` shell command. In the 'Print result' step, the line `echo ${{ steps.apply.outputs.public_url }} >> $GITHUB_STEP_SUMMARY` embeds the `steps.apply.outputs.public_url` context value directly into the shell command string. The `steps.*.outputs.*` context is workflow-controllable and passes through YAML template substitution before the shell processes it, enabling script injection if the output contains shell metacharacters. Fix: assign the value to an env var and reference it as a quoted shell variable, e.g. `env: PUBLIC_URL: ${{ steps.apply.outputs.public_url }}` then `echo "$PUBLIC_URL" >> $GITHUB_STEP_SUMMARY`.
 
 Locations:
 
-- `action.yaml:248`
+- `action.yaml:196`
 
 ## Iteration Notes
 
@@ -40,5 +40,5 @@ Locations:
 
 **Notes:**
 
-Fixed three unpinned action references by resolving them to full 40-character commit SHAs: actions/checkout@v4 → @11d5960a326750d5838078e36cf38b85af677262, aws-actions/configure-aws-credentials@v4 → @7474bc4690e29a8392af63c5b98e7449536d5c3a, hashicorp/setup-terraform@v3 → @b9cd54a3c349d3f38e8881555d616ced269862dd. Fixed script injection in the 'Print result' step by moving the ${{ steps.apply.outputs.public_url }} expression into an env: block as PUBLIC_URL and referencing it as "$PUBLIC_URL" in the shell script.
+Fixed three unpinned `uses:` references by replacing mutable version tags with full 40-character commit SHAs (actions/checkout@v4→11d5960a..., aws-actions/configure-aws-credentials@v4→7474bc4..., hashicorp/setup-terraform@v3→b9cd54a...). Fixed script injection in the 'Print result' step by moving `${{ steps.apply.outputs.public_url }}` into an `env:` block as `PUBLIC_URL` and referencing it as the quoted shell variable `"$PUBLIC_URL"` in the run script.
 

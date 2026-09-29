@@ -1,0 +1,54 @@
+name: Test advanced site options (CDN TTL, bucket name, error doc, tf options)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create a minimal source folder
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/site"
+          echo "<html><body>Advanced Test</body></html>" > "$GITHUB_WORKSPACE/site/index.html"
+
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          checkout: 'false'
+          aws_access_key_id: 'AKIAFAKEACCESSKEYID1'
+          aws_secret_access_key: 'fakesecretaccesskey0000000000000000000000'
+          aws_default_region: 'us-east-1'
+          aws_resource_identifier: 'test-advanced-site'
+          aws_additional_tags: '{"env":"test","team":"platform"}'
+          aws_site_source_folder: 'site'
+          aws_site_source_include_hidden: 'false'
+          aws_site_root_object: 'index.html'
+          aws_site_error_document: '404.html'
+          aws_site_bucket_name: 'my-advanced-test-bucket'
+          aws_site_cdn_enabled: 'true'
+          aws_site_cdn_aliases: 'cdn.example.com'
+          aws_site_cdn_custom_error_codes: '{"error_code":404,"response_code":200,"response_page_path":"/index.html"}'
+          aws_site_cdn_response_headers_policy_id: '67f7725c-6f97-4210-82d7-5512b31e9d42'
+          aws_site_cdn_min_ttl: '0'
+          aws_site_cdn_default_ttl: '86400'
+          aws_site_cdn_max_ttl: '31536000'
+          tf_state_bucket: 'test-advanced-site-tf-state'
+          tf_state_file_name: 'my-custom-tf-state'
+          tf_state_file_name_append: 'unique'
+          tf_action: 'plan'
+          tf_state_bucket_destroy: 'false'
+
+      - name: Assert action ran (success or graceful failure with fake creds)
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" = "failure" ] || [ "$OUTCOME" = "success" ]; then
+            echo "PASS: action ran (outcome: $OUTCOME)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi

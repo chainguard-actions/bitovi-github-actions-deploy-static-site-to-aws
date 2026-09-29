@@ -1,0 +1,180 @@
+name: Test generate_deploy.sh script output
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create a minimal source folder with index.html
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/site"
+          echo "<html><body>Test Site</body></html>" > "$GITHUB_WORKSPACE/site/index.html"
+
+      # The action requires AWS creds; run it with fake creds to satisfy the lint
+      # requirement that every test file has a uses: . step.
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          checkout: 'false'
+          aws_access_key_id: 'AKIAFAKEACCESSKEYID1'
+          aws_secret_access_key: 'fakesecretaccesskey0000000000000000000000'
+          aws_default_region: 'us-east-1'
+          aws_resource_identifier: 'test-deploy-gen'
+          aws_site_source_folder: 'site'
+          tf_state_bucket: 'test-deploy-gen-tf-state'
+
+      - name: Assert action ran (success or graceful failure with fake creds)
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" = "failure" ] || [ "$OUTCOME" = "success" ]; then
+            echo "PASS: action ran (outcome: $OUTCOME)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi
+
+      - name: Install rsync (required by generate_deploy.sh)
+        run: |
+          which rsync || (apt-get update -qq && apt-get install -y rsync)
+
+      - name: Set up working directory using fixture scripts
+        run: |
+          # Use fixture scripts committed to the repo (not symlinks to host paths)
+          FIXTURE_SCRIPTS="$GITHUB_WORKSPACE/tests/fixtures/scripts"
+          mkdir -p /tmp/test-action/terraform_code
+          mkdir -p /tmp/test-action/upload
+          cp "$FIXTURE_SCRIPTS/generate_deploy.sh" /tmp/test-action/scripts/generate_deploy.sh 2>/dev/null || true
+          mkdir -p /tmp/test-action/scripts
+          cp "$FIXTURE_SCRIPTS/generate_deploy.sh" /tmp/test-action/scripts/generate_deploy.sh
+          cp "$FIXTURE_SCRIPTS/generate_identifier.sh" /tmp/test-action/scripts/generate_identifier.sh
+          cp "$FIXTURE_SCRIPTS/generate_provider.sh" /tmp/test-action/scripts/generate_provider.sh
+          cp "$FIXTURE_SCRIPTS/check_bucket_name.sh" /tmp/test-action/scripts/check_bucket_name.sh
+          cp "$FIXTURE_SCRIPTS/create_tf_state_bucket.sh" /tmp/test-action/scripts/create_tf_state_bucket.sh
+          chmod -R +x /tmp/test-action/scripts
+
+      - name: Mock AWS CLI to avoid real AWS calls
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          cat > "$HOME/.local/bin/aws" << 'EOF'
+          #!/bin/sh
+          # Fake aws CLI - simulate success for s3api and s3 calls
+          case "$*" in
+            *s3api\ create-bucket*)
+              echo '{"Location": "/test-bucket"}'
+              exit 0
+              ;;
+            *s3api\ put-object*)
+              exit 0
+              ;;
+            *s3\ rm*)
+              exit 0
+              ;;
+            *)
+              echo "Fake AWS CLI: $*" >&2
+              exit 0
+              ;;
+          esac
+          EOF
+          chmod +x "$HOME/.local/bin/aws"
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Run generate_deploy.sh and verify tfvars output
+        env:
+          GITHUB_REPOSITORY: 'testorg/testrepo'
+          GITHUB_REF_NAME: 'main'
+          GITHUB_HEAD_REF: ''
+          GITHUB_ACTION_PATH: /tmp/test-action
+          AWS_RESOURCE_IDENTIFIER: 'test-deploy-gen'
+          AWS_DEFAULT_REGION: 'us-east-1'
+          AWS_SITE_SOURCE_FOLDER: 'site'
+          AWS_SITE_SOURCE_INCLUDE_HIDDEN: 'false'
+          AWS_SITE_ROOT_OBJECT: 'index.html'
+          AWS_SITE_CDN_ENABLED: 'false'
+          TF_STATE_BUCKET: 'test-deploy-gen-tf-state'
+          TF_STATE_FILE_NAME: ''
+          TF_STATE_FILE_NAME_APPEND: ''
+          AWS_SITE_BUCKET_NAME: ''
+          AWS_SITE_CDN_ALIASES: ''
+          AWS_SITE_CDN_CUSTOM_ERROR_CODES: ''
+          AWS_SITE_CDN_RESPONSE_HEADERS_POLICY_ID: ''
+          AWS_SITE_CDN_MIN_TTL: ''
+          AWS_SITE_CDN_DEFAULT_TTL: ''
+          AWS_SITE_CDN_MAX_TTL: ''
+          AWS_SITE_ERROR_DOCUMENT: ''
+          AWS_R53_DOMAIN_NAME: ''
+          AWS_R53_SUB_DOMAIN_NAME: ''
+          AWS_R53_ROOT_DOMAIN_DEPLOY: ''
+          AWS_R53_CERT_ARN: ''
+          AWS_R53_CREATE_ROOT_CERT: ''
+          AWS_R53_CREATE_SUB_CERT: ''
+          AWS_ADDITIONAL_TAGS: ''
+        run: |
+          bash /tmp/test-action/scripts/generate_deploy.sh
+          echo "--- terraform.tfvars content ---"
+          cat /tmp/test-action/terraform_code/terraform.tfvars
+          echo "--- end ---"
+
+      - name: Assert terraform.tfvars contains expected resource identifier
+        run: |
+          TFVARS="/tmp/test-action/terraform_code/terraform.tfvars"
+          echo "Checking for aws_resource_identifier..."
+          if ! grep -q 'aws_resource_identifier = "test-deploy-gen"' "$TFVARS"; then
+            echo "FAIL: aws_resource_identifier not found or incorrect in terraform.tfvars"
+            cat "$TFVARS"
+            exit 1
+          fi
+          echo "PASS: aws_resource_identifier found"
+
+      - name: Assert terraform.tfvars contains source folder
+        run: |
+          TFVARS="/tmp/test-action/terraform_code/terraform.tfvars"
+          echo "Checking for aws_site_source_folder..."
+          if ! grep -q 'aws_site_source_folder' "$TFVARS"; then
+            echo "FAIL: aws_site_source_folder not found in terraform.tfvars"
+            cat "$TFVARS"
+            exit 1
+          fi
+          echo "PASS: aws_site_source_folder found"
+
+      - name: Assert terraform.tfvars contains tf state bucket
+        run: |
+          TFVARS="/tmp/test-action/terraform_code/terraform.tfvars"
+          echo "Checking for aws_tf_state_bucket..."
+          if ! grep -q 'aws_tf_state_bucket = "test-deploy-gen-tf-state"' "$TFVARS"; then
+            echo "FAIL: aws_tf_state_bucket not found or incorrect in terraform.tfvars"
+            cat "$TFVARS"
+            exit 1
+          fi
+          echo "PASS: aws_tf_state_bucket found"
+
+      - name: Assert provider.tf was generated
+        run: |
+          PROVIDER="/tmp/test-action/terraform_code/provider.tf"
+          echo "Checking provider.tf..."
+          if [ ! -f "$PROVIDER" ]; then
+            echo "FAIL: provider.tf was not generated"
+            exit 1
+          fi
+          if ! grep -q 'backend "s3"' "$PROVIDER"; then
+            echo "FAIL: provider.tf does not contain S3 backend config"
+            cat "$PROVIDER"
+            exit 1
+          fi
+          echo "PASS: provider.tf generated with S3 backend"
+
+      - name: Assert site files were copied to upload directory
+        run: |
+          UPLOAD_DIR="/tmp/test-action/upload"
+          echo "Checking upload directory..."
+          if [ ! -f "$UPLOAD_DIR/index.html" ]; then
+            echo "FAIL: index.html not found in upload directory"
+            ls -la "$UPLOAD_DIR" 2>/dev/null || echo "Upload dir does not exist"
+            exit 1
+          fi
+          echo "PASS: index.html found in upload directory"

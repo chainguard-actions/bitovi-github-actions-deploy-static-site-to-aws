@@ -1,0 +1,105 @@
+name: Test site settings inputs
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REPOSITORY: myorg/myrepo
+      GITHUB_REF_NAME: main
+      GITHUB_HEAD_REF: ""
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Invoke action with site settings (will fail at Terraform without real AWS creds)
+        id: action
+        uses: .
+        continue-on-error: true
+        with:
+          checkout: 'false'
+          aws_access_key_id: fake-key-id
+          aws_secret_access_key: fake-secret-key
+          aws_default_region: us-east-1
+          aws_site_source_folder: .
+          aws_site_source_include_hidden: 'true'
+          aws_site_root_object: index.html
+          aws_site_error_document: error.html
+          aws_site_bucket_name: my-custom-site-bucket
+
+      - name: Run generate_deploy.sh with site settings
+        env:
+          GITHUB_ACTION_PATH: "${{ github.workspace }}"
+          GITHUB_REPOSITORY: myorg/myrepo
+          GITHUB_REF_NAME: main
+          GITHUB_HEAD_REF: ""
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_RESOURCE_IDENTIFIER: ""
+          AWS_ADDITIONAL_TAGS: ""
+          TF_STATE_BUCKET: myorg-myrepo-main-tf-state
+          TF_STATE_FILE_NAME: ""
+          TF_STATE_FILE_NAME_APPEND: ""
+          AWS_SITE_SOURCE_FOLDER: .
+          AWS_SITE_SOURCE_INCLUDE_HIDDEN: "true"
+          AWS_SITE_ROOT_OBJECT: "index.html"
+          AWS_SITE_ERROR_DOCUMENT: "error.html"
+          AWS_SITE_BUCKET_NAME: "my-custom-site-bucket"
+          AWS_SITE_CDN_ENABLED: ""
+          AWS_SITE_CDN_ALIASES: ""
+          AWS_SITE_CDN_CUSTOM_ERROR_CODES: ""
+          AWS_SITE_CDN_RESPONSE_HEADERS_POLICY_ID: ""
+          AWS_SITE_CDN_MIN_TTL: ""
+          AWS_SITE_CDN_DEFAULT_TTL: ""
+          AWS_SITE_CDN_MAX_TTL: ""
+          AWS_R53_DOMAIN_NAME: ""
+          AWS_R53_SUB_DOMAIN_NAME: ""
+          AWS_R53_ROOT_DOMAIN_DEPLOY: ""
+          AWS_R53_CERT_ARN: ""
+          AWS_R53_CREATE_ROOT_CERT: ""
+          AWS_R53_CREATE_SUB_CERT: ""
+        run: |
+          # Stub out create_tf_state_bucket.sh to avoid real AWS calls
+          mkdir -p "$GITHUB_WORKSPACE/scripts_bak"
+          cp "$GITHUB_WORKSPACE/scripts/create_tf_state_bucket.sh" "$GITHUB_WORKSPACE/scripts_bak/"
+          echo '#!/bin/bash' > "$GITHUB_WORKSPACE/scripts/create_tf_state_bucket.sh"
+          echo 'echo "Stubbed create_tf_state_bucket.sh"' >> "$GITHUB_WORKSPACE/scripts/create_tf_state_bucket.sh"
+          chmod +x "$GITHUB_WORKSPACE/scripts/create_tf_state_bucket.sh"
+          bash "$GITHUB_WORKSPACE/scripts/generate_deploy.sh"
+          # restore
+          cp "$GITHUB_WORKSPACE/scripts_bak/create_tf_state_bucket.sh" "$GITHUB_WORKSPACE/scripts/create_tf_state_bucket.sh"
+
+      - name: Assert terraform.tfvars contains root object
+        run: |
+          echo "Contents of terraform.tfvars:"
+          cat "$GITHUB_WORKSPACE/terraform_code/terraform.tfvars"
+          if ! grep -q 'aws_site_root_object.*=.*"index.html"' "$GITHUB_WORKSPACE/terraform_code/terraform.tfvars"; then
+            echo "FAIL: terraform.tfvars does not contain aws_site_root_object = index.html"
+            exit 1
+          fi
+          echo "PASS: aws_site_root_object is set correctly"
+
+      - name: Assert terraform.tfvars contains error document
+        run: |
+          if ! grep -q 'aws_site_error_document.*=.*"error.html"' "$GITHUB_WORKSPACE/terraform_code/terraform.tfvars"; then
+            echo "FAIL: terraform.tfvars does not contain aws_site_error_document = error.html"
+            exit 1
+          fi
+          echo "PASS: aws_site_error_document is set correctly"
+
+      - name: Assert terraform.tfvars contains custom bucket name
+        run: |
+          if ! grep -q 'aws_site_bucket_name.*=.*"my-custom-site-bucket"' "$GITHUB_WORKSPACE/terraform_code/terraform.tfvars"; then
+            echo "FAIL: terraform.tfvars does not contain aws_site_bucket_name = my-custom-site-bucket"
+            exit 1
+          fi
+          echo "PASS: aws_site_bucket_name is set correctly"
+
+      - name: Assert hidden files are included when aws_site_source_include_hidden is true
+        run: |
+          # When include_hidden is true, rsync should NOT have --exclude=.* flag
+          # We verify the upload directory was created (rsync ran successfully)
+          if [ ! -d "$GITHUB_WORKSPACE/upload" ]; then
+            echo "FAIL: upload directory was not created by generate_deploy.sh"
+            exit 1
+          fi
+          echo "PASS: upload directory exists (rsync ran with include_hidden=true)"

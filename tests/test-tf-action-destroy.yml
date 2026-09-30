@@ -1,0 +1,90 @@
+name: Test Terraform action and state bucket destroy inputs
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REPOSITORY: myorg/myrepo
+      GITHUB_REF_NAME: main
+      GITHUB_HEAD_REF: ""
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Invoke action with tf_action=apply (will fail at Terraform without real AWS creds)
+        id: action_apply
+        uses: .
+        continue-on-error: true
+        with:
+          checkout: 'false'
+          aws_access_key_id: fake-key-id
+          aws_secret_access_key: fake-secret-key
+          aws_default_region: us-east-1
+          aws_site_source_folder: .
+          tf_action: apply
+          tf_state_bucket_destroy: 'false'
+
+      - name: Invoke action with tf_action=destroy (will fail at Terraform without real AWS creds)
+        id: action_destroy
+        uses: .
+        continue-on-error: true
+        with:
+          checkout: 'false'
+          aws_access_key_id: fake-key-id
+          aws_secret_access_key: fake-secret-key
+          aws_default_region: us-east-1
+          aws_site_source_folder: .
+          tf_action: destroy
+          tf_state_bucket_destroy: 'true'
+
+      - name: Assert action.yml declares tf_action input
+        run: |
+          if ! grep -q 'tf_action' "$GITHUB_WORKSPACE/action.yaml"; then
+            echo "FAIL: action.yaml does not declare tf_action input"
+            exit 1
+          fi
+          echo "PASS: action.yaml declares tf_action input"
+
+      - name: Assert action.yml declares tf_state_bucket_destroy input
+        run: |
+          if ! grep -q 'tf_state_bucket_destroy' "$GITHUB_WORKSPACE/action.yaml"; then
+            echo "FAIL: action.yaml does not declare tf_state_bucket_destroy input"
+            exit 1
+          fi
+          echo "PASS: action.yaml declares tf_state_bucket_destroy input"
+
+      - name: Assert action.yml has Terraform Apply step with correct condition
+        run: |
+          # Verify the apply step has the correct condition
+          if ! grep -A2 "Terraform Apply" "$GITHUB_WORKSPACE/action.yaml" | grep -q "tf_action == 'apply'"; then
+            echo "FAIL: action.yaml Terraform Apply step does not have correct tf_action condition"
+            exit 1
+          fi
+          echo "PASS: Terraform Apply step has correct condition"
+
+      - name: Assert action.yml has Terraform Destroy step with correct condition
+        run: |
+          # Verify the destroy step has the correct condition
+          if ! grep -A2 "Terraform Destroy" "$GITHUB_WORKSPACE/action.yaml" | grep -q "tf_action == 'destroy'"; then
+            echo "FAIL: action.yaml Terraform Destroy step does not have correct tf_action condition"
+            exit 1
+          fi
+          echo "PASS: Terraform Destroy step has correct condition"
+
+      - name: Assert action.yml has purge step conditioned on tf_state_bucket_destroy
+        run: |
+          # Verify the purge step checks tf_state_bucket_destroy
+          if ! grep -q "tf_state_bucket_destroy == 'true'" "$GITHUB_WORKSPACE/action.yaml"; then
+            echo "FAIL: action.yaml does not have purge step conditioned on tf_state_bucket_destroy"
+            exit 1
+          fi
+          echo "PASS: Purge step is conditioned on tf_state_bucket_destroy"
+
+      - name: Assert destroy_tf_state_bucket.sh script exists
+        run: |
+          if [ ! -f "$GITHUB_WORKSPACE/scripts/destroy_tf_state_bucket.sh" ]; then
+            echo "FAIL: destroy_tf_state_bucket.sh does not exist"
+            exit 1
+          fi
+          echo "PASS: destroy_tf_state_bucket.sh exists"

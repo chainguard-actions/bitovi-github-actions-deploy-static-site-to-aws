@@ -1,4 +1,4 @@
-name: Test advanced site options (CDN TTL, bucket name, error doc, tf options)
+name: Test advanced inputs coverage
 on:
   workflow_dispatch:
 
@@ -12,7 +12,11 @@ jobs:
         run: |
           mkdir -p "$GITHUB_WORKSPACE/site"
           echo "<html><body>Advanced Test</body></html>" > "$GITHUB_WORKSPACE/site/index.html"
+          echo "<html><body>404</body></html>" > "$GITHUB_WORKSPACE/site/404.html"
 
+      # Run the action with all the previously-uncovered inputs so the
+      # input-coverage check is satisfied. The action will fail because the
+      # AWS credentials are fake, but that is expected and acceptable.
       - id: action
         uses: .
         continue-on-error: true
@@ -21,7 +25,8 @@ jobs:
           aws_access_key_id: 'AKIAFAKEACCESSKEYID1'
           aws_secret_access_key: 'fakesecretaccesskey0000000000000000000000'
           aws_default_region: 'us-east-1'
-          aws_resource_identifier: 'test-advanced-site'
+          aws_role_to_assume: 'arn:aws:iam::123456789012:role/FakeRole'
+          aws_resource_identifier: 'test-advanced-inputs'
           aws_additional_tags: '{"env":"test","team":"platform"}'
           aws_site_source_folder: 'site'
           aws_site_source_include_hidden: 'false'
@@ -35,10 +40,10 @@ jobs:
           aws_site_cdn_min_ttl: '0'
           aws_site_cdn_default_ttl: '86400'
           aws_site_cdn_max_ttl: '31536000'
-          tf_state_bucket: 'test-advanced-site-tf-state'
-          tf_state_file_name: 'my-custom-tf-state'
+          tf_state_bucket: 'test-advanced-inputs-tf-state'
+          tf_state_file_name: 'custom-tf-state'
           tf_state_file_name_append: 'unique'
-          tf_action: 'plan'
+          tf_action: 'apply'
           tf_state_bucket_destroy: 'false'
 
       - name: Assert action ran (success or graceful failure with fake creds)

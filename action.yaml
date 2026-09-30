@@ -126,7 +126,7 @@ runs:
           "https://actions.enforce.dev/actions/v1/record" >/dev/null 2>&1 || true
     - name: Checkout
       if: ${{ inputs.checkout == 'true' }}
-      uses: chainguard-actions/actions-checkout@59b7218bfc2eaabc464f1254f6e1dac5bda91d94 # v4
+      uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4
     - name: Configure AWS Credentials
       if: ${{ inputs.aws_access_key_id != '' }}
       uses: chainguard-actions/aws-actions-configure-aws-credentials@05c5161294fac31f72449e5671350b7bf823c91f # v4
@@ -205,7 +205,9 @@ runs:
         echo "::group::Terraform Apply"
         terraform -chdir=$GITHUB_ACTION_PATH/terraform_code apply -auto-approve
         echo "::endgroup::"
-        terraform -chdir=$GITHUB_ACTION_PATH/terraform_code output | grep public_url | sed -e 's/ *= */=/g' -e 's/"//g' >> $GITHUB_OUTPUT
+        raw_output=$(terraform -chdir=$GITHUB_ACTION_PATH/terraform_code output | grep public_url | sed -e 's/ *= */=/g' -e 's/"//g')
+        safe_output=$(printf '%s' "$raw_output" | tr -d '\n\r')
+        echo "$safe_output" >> "$GITHUB_OUTPUT"
     - name: Terraform Destroy
       if: ${{ success() && inputs.tf_action == 'destroy' }}
       shell: bash
